@@ -40,8 +40,8 @@ flowchart TB
         C3[Custom Application]
     end
 
-    subgraph Gateway["LLM Proxy Auth Gateway - EKS Pod"]
-        AUTH[Authentication Layer<br/>API Key / 2FA / OAuth2]
+    subgraph Gateway["LLM Proxy Auth Gateway - Kubernetes Pod"]
+        AUTH[User Authentication Layer<br/>API Key / 2FA / OAuth2]
 
         TRANSPARENT[Transparent Mode<br/>/transparent/*]
         PROTOCOL[Protocol Mode<br/>/protocol/*]
@@ -55,7 +55,25 @@ flowchart TB
         P7[Oracle Handler]
     end
 
-    subgraph Providers["AI Providers"]
+    subgraph CredSources["Credential Sources - Platform Dependent"]
+        subgraph WorkloadID["Workload Identity"]
+            WI1[AWS IRSA on EKS]
+            WI2[Azure Managed Identity on AKS]
+            WI3[GCP Workload Identity on GKE]
+            WI4[OCI Resource Principal on OKE]
+        end
+
+        subgraph Vaults["Vault Backends"]
+            V1[HashiCorp Vault]
+            V2[AWS Secrets Manager]
+            V3[Azure Key Vault]
+            V4[GCP Secret Manager]
+        end
+
+        K8S_SEC[Kubernetes Secrets<br/>Fallback]
+    end
+
+    subgraph AIProviders["AI Providers"]
         BEDROCK[AWS Bedrock]
         OPENAI[OpenAI API]
         ANTHROPIC[Anthropic API]
@@ -64,8 +82,6 @@ flowchart TB
         IBM_P[IBM watsonx.ai]
         ORACLE[Oracle Cloud AI]
     end
-
-    IRSA[AWS IAM Role IRSA<br/>Auto-rotated credentials]
 
     C1 --> AUTH
     C2 --> AUTH
@@ -90,19 +106,66 @@ flowchart TB
     PROTOCOL --> P6
     PROTOCOL --> P7
 
-    P1 --> IRSA
-    IRSA --> BEDROCK
-    P2 --> OPENAI
-    P3 --> ANTHROPIC
-    P4 --> AZURE
-    P5 --> VERTEX
-    P6 --> IBM_P
-    P7 --> ORACLE
+    P1 --> WI1
+    P1 --> V1
+    P1 --> V2
+    P2 --> V1
+    P2 --> V2
+    P2 --> V3
+    P2 --> V4
+    P3 --> V1
+    P3 --> V2
+    P3 --> V3
+    P4 --> WI2
+    P4 --> V1
+    P4 --> V3
+    P5 --> WI3
+    P5 --> V1
+    P5 --> V4
+    P6 --> V1
+    P6 --> V2
+    P7 --> WI4
+    P7 --> V1
+
+    WI1 --> BEDROCK
+    WI2 --> AZURE
+    WI3 --> VERTEX
+    WI4 --> ORACLE
+
+    V1 --> BEDROCK
+    V1 --> OPENAI
+    V1 --> ANTHROPIC
+    V1 --> AZURE
+    V1 --> VERTEX
+    V1 --> IBM_P
+    V1 --> ORACLE
+
+    V2 --> BEDROCK
+    V2 --> OPENAI
+    V2 --> ANTHROPIC
+
+    V3 --> AZURE
+    V3 --> OPENAI
+    V3 --> ANTHROPIC
+
+    V4 --> VERTEX
+    V4 --> OPENAI
+    V4 --> ANTHROPIC
+
+    K8S_SEC --> BEDROCK
+    K8S_SEC --> OPENAI
+    K8S_SEC --> ANTHROPIC
+    K8S_SEC --> AZURE
+    K8S_SEC --> VERTEX
+    K8S_SEC --> IBM_P
+    K8S_SEC --> ORACLE
 
     style AUTH fill:#e1f5ff
     style TRANSPARENT fill:#fff4e1
     style PROTOCOL fill:#ffe1f5
-    style IRSA fill:#e8f5e9
+    style WorkloadID fill:#e8f5e9
+    style Vaults fill:#fff3e0
+    style K8S_SEC fill:#ffebee
 ```
 
 ### Dual-Mode Architecture
