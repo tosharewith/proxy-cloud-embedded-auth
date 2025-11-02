@@ -33,54 +33,62 @@ Formerly known as Bedrock IAM Proxy.
 ### High-Level Architecture
 
 ```mermaid
-graph TB
-    subgraph "Client Applications"
+flowchart TB
+    subgraph Clients["Client Applications"]
         C1[OpenAI SDK Client]
         C2[Native API Client]
         C3[Custom Application]
     end
 
-    subgraph "LLM Proxy Auth Gateway (EKS Pod)"
-        subgraph "Authentication Layer"
-            AUTH[API Key / 2FA / OAuth2]
-        end
+    subgraph Gateway["LLM Proxy Auth Gateway - EKS Pod"]
+        AUTH[Authentication Layer<br/>API Key / 2FA / OAuth2]
 
-        subgraph "Dual-Mode Routing"
-            TRANSPARENT[Transparent Mode<br/>/transparent/*<br/>Auth-only passthrough]
-            PROTOCOL[Protocol Mode<br/>/{protocol}/*<br/>Request/Response Translation]
-        end
+        TRANSPARENT[Transparent Mode<br/>/transparent/*]
+        PROTOCOL[Protocol Mode<br/>/protocol/*]
 
-        subgraph "Provider Handlers"
-            P1[Bedrock Handler<br/>AWS SigV4 + IRSA]
-            P2[OpenAI Handler<br/>API Key Auth]
-            P3[Anthropic Handler<br/>API Key Auth]
-            P4[Azure Handler<br/>API Key Auth]
-            P5[Vertex Handler<br/>GCP OAuth2]
-            P6[IBM Handler<br/>Bearer Token]
-            P7[Oracle Handler<br/>Bearer Token]
-        end
+        P1[Bedrock Handler]
+        P2[OpenAI Handler]
+        P3[Anthropic Handler]
+        P4[Azure Handler]
+        P5[Vertex Handler]
+        P6[IBM Handler]
+        P7[Oracle Handler]
     end
 
-    subgraph "AI Providers"
-        BEDROCK[AWS Bedrock<br/>VPC Endpoint]
+    subgraph Providers["AI Providers"]
+        BEDROCK[AWS Bedrock]
         OPENAI[OpenAI API]
         ANTHROPIC[Anthropic API]
         AZURE[Azure OpenAI]
         VERTEX[Google Vertex AI]
-        IBM[IBM watsonx.ai]
+        IBM_P[IBM watsonx.ai]
         ORACLE[Oracle Cloud AI]
     end
 
-    subgraph "AWS IAM"
-        IRSA[IAM Role IRSA<br/>Auto-rotated credentials]
-    end
+    IRSA[AWS IAM Role IRSA<br/>Auto-rotated credentials]
 
-    C1 & C2 & C3 --> AUTH
+    C1 --> AUTH
+    C2 --> AUTH
+    C3 --> AUTH
+
     AUTH --> TRANSPARENT
     AUTH --> PROTOCOL
 
-    TRANSPARENT --> P1 & P2 & P3 & P4 & P5 & P6 & P7
-    PROTOCOL --> P1 & P2 & P3 & P4 & P5 & P6 & P7
+    TRANSPARENT --> P1
+    TRANSPARENT --> P2
+    TRANSPARENT --> P3
+    TRANSPARENT --> P4
+    TRANSPARENT --> P5
+    TRANSPARENT --> P6
+    TRANSPARENT --> P7
+
+    PROTOCOL --> P1
+    PROTOCOL --> P2
+    PROTOCOL --> P3
+    PROTOCOL --> P4
+    PROTOCOL --> P5
+    PROTOCOL --> P6
+    PROTOCOL --> P7
 
     P1 --> IRSA
     IRSA --> BEDROCK
@@ -88,7 +96,7 @@ graph TB
     P3 --> ANTHROPIC
     P4 --> AZURE
     P5 --> VERTEX
-    P6 --> IBM
+    P6 --> IBM_P
     P7 --> ORACLE
 
     style AUTH fill:#e1f5ff
@@ -121,7 +129,8 @@ sequenceDiagram
 
     rect rgb(255, 244, 225)
     Note over Client,Provider: Transparent Mode
-    Client->>Gateway: POST /transparent/bedrock/model/claude-3/invoke<br/>(Native Bedrock format)
+    Client->>Gateway: POST /transparent/bedrock/model/claude-3/invoke
+    Note right of Client: Native Bedrock format
     Gateway->>Gateway: Authenticate API Key
     Gateway->>Gateway: Add AWS SigV4 signature
     Gateway->>Provider: Forward unchanged request
@@ -130,14 +139,15 @@ sequenceDiagram
     end
 
     rect rgb(255, 225, 245)
-    Note over Client,Provider: Protocol Mode (OpenAI-compatible)
-    Client->>Gateway: POST /openai/bedrock_us1/chat/completions<br/>(OpenAI format)
+    Note over Client,Provider: Protocol Mode - OpenAI compatible
+    Client->>Gateway: POST /openai/bedrock_us1/chat/completions
+    Note right of Client: OpenAI format
     Gateway->>Gateway: Authenticate API Key
-    Gateway->>Gateway: Translate OpenAI → Bedrock format
+    Gateway->>Gateway: Translate OpenAI to Bedrock format
     Gateway->>Gateway: Add AWS SigV4 signature
     Gateway->>Provider: Send translated request
     Provider-->>Gateway: Native response
-    Gateway->>Gateway: Translate Bedrock → OpenAI format
+    Gateway->>Gateway: Translate Bedrock to OpenAI format
     Gateway-->>Client: Return OpenAI-formatted response
     end
 ```

@@ -14,38 +14,33 @@ Transform the Bedrock IAM Proxy into a **unified AI gateway** that:
 ## 🏗️ Three-Layer Architecture
 
 ```mermaid
-graph TB
+flowchart TB
     subgraph Layer1["LAYER 1: CLIENT INTERFACE"]
-        subgraph OpenAI["OpenAI-Compatible API"]
-            OPENAI_CHAT["/v1/chat/completions"]
-            OPENAI_COMP["/v1/completions"]
-            OPENAI_MODELS["/v1/models"]
-            OPENAI_EMBED["/v1/embeddings"]
-        end
+        OPENAI_CHAT["/v1/chat/completions"]
+        OPENAI_COMP["/v1/completions"]
+        OPENAI_MODELS["/v1/models"]
+        OPENAI_EMBED["/v1/embeddings"]
 
-        subgraph Native["Native Provider APIs (Transparent Mode)"]
-            NATIVE_BEDROCK["/transparent/bedrock/*"]
-            NATIVE_AZURE["/transparent/azure/*"]
-            NATIVE_OPENAI["/transparent/openai/*"]
-            NATIVE_ANTHROPIC["/transparent/anthropic/*"]
-            NATIVE_VERTEX["/transparent/vertex/*"]
-        end
+        NATIVE_BEDROCK["/transparent/bedrock/*"]
+        NATIVE_AZURE["/transparent/azure/*"]
+        NATIVE_OPENAI["/transparent/openai/*"]
+        NATIVE_ANTHROPIC["/transparent/anthropic/*"]
+        NATIVE_VERTEX["/transparent/vertex/*"]
     end
 
     subgraph Layer2["LAYER 2: AUTH & ROUTING"]
-        AUTH[Authentication<br/>• API Key X-API-Key<br/>• Optional 2FA/TOTP<br/>• Rate limiting<br/>• Audit logging]
-
-        ROUTER[Router/Translator<br/>• Parse requests<br/>• Extract model name<br/>• Determine provider<br/>• Transform request format]
+        AUTH[Authentication Layer]
+        ROUTER[Router and Translator]
     end
 
     subgraph Layer3["LAYER 3: PROVIDER HANDLERS"]
-        H_BEDROCK[Bedrock Handler<br/>AWS SigV4 + IRSA]
-        H_AZURE[Azure Handler<br/>AD Token + API Key]
-        H_OPENAI[OpenAI Handler<br/>API Key Auth]
-        H_ANTHROPIC[Anthropic Handler<br/>API Key Auth]
-        H_VERTEX[Vertex Handler<br/>GCP JWT Token]
-        H_IBM[IBM Handler<br/>Bearer Token]
-        H_ORACLE[Oracle Handler<br/>Bearer Token]
+        H_BEDROCK[Bedrock Handler]
+        H_AZURE[Azure Handler]
+        H_OPENAI[OpenAI Handler]
+        H_ANTHROPIC[Anthropic Handler]
+        H_VERTEX[Vertex Handler]
+        H_IBM[IBM Handler]
+        H_ORACLE[Oracle Handler]
     end
 
     subgraph Providers["AI PROVIDERS"]
@@ -58,11 +53,25 @@ graph TB
         P_ORACLE[Oracle Cloud AI]
     end
 
-    OPENAI_CHAT & OPENAI_COMP & OPENAI_MODELS & OPENAI_EMBED --> AUTH
-    NATIVE_BEDROCK & NATIVE_AZURE & NATIVE_OPENAI & NATIVE_ANTHROPIC & NATIVE_VERTEX --> AUTH
+    OPENAI_CHAT --> AUTH
+    OPENAI_COMP --> AUTH
+    OPENAI_MODELS --> AUTH
+    OPENAI_EMBED --> AUTH
+    NATIVE_BEDROCK --> AUTH
+    NATIVE_AZURE --> AUTH
+    NATIVE_OPENAI --> AUTH
+    NATIVE_ANTHROPIC --> AUTH
+    NATIVE_VERTEX --> AUTH
 
     AUTH --> ROUTER
-    ROUTER --> H_BEDROCK & H_AZURE & H_OPENAI & H_ANTHROPIC & H_VERTEX & H_IBM & H_ORACLE
+
+    ROUTER --> H_BEDROCK
+    ROUTER --> H_AZURE
+    ROUTER --> H_OPENAI
+    ROUTER --> H_ANTHROPIC
+    ROUTER --> H_VERTEX
+    ROUTER --> H_IBM
+    ROUTER --> H_ORACLE
 
     H_BEDROCK --> P_BEDROCK
     H_AZURE --> P_AZURE

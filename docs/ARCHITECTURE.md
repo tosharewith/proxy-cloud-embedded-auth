@@ -4,10 +4,10 @@
 
 ```mermaid
 sequenceDiagram
-    participant Users as User's Laptop<br/>(Alice, Bob, Charlie)
-    participant Gateway as LLM Proxy Gateway<br/>(EKS Pod)
-    participant IRSA as AWS IRSA<br/>(IAM Role)
-    participant Providers as AI Providers<br/>(Bedrock, OpenAI, etc)
+    participant Users as Users Laptop
+    participant Gateway as LLM Proxy Gateway
+    participant IRSA as AWS IRSA
+    participant Providers as AI Providers
 
     Note over Users: No AWS credentials needed<br/>Only API Key required
 
@@ -26,11 +26,12 @@ sequenceDiagram
     end
 
     rect rgb(232, 245, 233)
-    Note over Gateway,Providers: Layer 2: Provider Authentication (Automatic)
+    Note over Gateway,Providers: Layer 2: Provider Authentication
     Gateway->>Gateway: Read AWS_ROLE_ARN from env
     Gateway->>Gateway: Read K8s service account token
     Gateway->>IRSA: AssumeRoleWithWebIdentity
-    IRSA-->>Gateway: Temporary AWS credentials<br/>(auto-rotated)
+    IRSA-->>Gateway: Temporary AWS credentials
+    Note right of IRSA: Auto-rotated credentials
     Gateway->>Gateway: Sign request with AWS SigV4
     Gateway->>Providers: Forward signed request
     alt Valid IAM

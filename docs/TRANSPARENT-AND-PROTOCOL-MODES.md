@@ -320,53 +320,65 @@ This allows tracking:
 ## Architecture
 
 ```mermaid
-graph TB
+flowchart TB
     Client[Client Application]
 
     Client --> TransparentPath
     Client --> ProtocolPath
 
     subgraph Transparent["Transparent Mode (/transparent/*)"]
-        TransparentPath["/transparent/{provider}/*"]
+        TransparentPath["/transparent/provider/*"]
         TransparentAuth[Authentication]
         TransparentMetrics[Metrics Capture]
-        TransparentNote["No Transformation<br/>Just Auth + Metrics"]
 
         TransparentPath --> TransparentAuth
         TransparentAuth --> TransparentMetrics
     end
 
     subgraph Protocol["Protocol Mode (/{protocol}/*)"]
-        ProtocolPath["/{protocol}/{instance}/*"]
+        ProtocolPath["/protocol/instance/*"]
         ProtocolAuth[Authentication]
         ProtocolTranslate[Request/Response Translation]
         ProtocolMetrics[Metrics Capture]
-        ProtocolNote["With Transformation<br/>OpenAI ↔ Provider Format"]
 
         ProtocolPath --> ProtocolAuth
         ProtocolAuth --> ProtocolTranslate
         ProtocolTranslate --> ProtocolMetrics
     end
 
-    subgraph Providers["AI Providers (with Authentication)"]
-        P1["AWS Bedrock (SigV4 + IRSA)"]
-        P2["Azure OpenAI (API Key)"]
-        P3["OpenAI (Bearer Token)"]
-        P4["Anthropic (API Key)"]
-        P5["Vertex AI (OAuth2)"]
-        P6["IBM watsonx.ai (Bearer Token)"]
-        P7["Oracle Cloud AI (Bearer Token)"]
+    subgraph Providers["AI Providers with Authentication"]
+        P1["AWS Bedrock - SigV4 + IRSA"]
+        P2["Azure OpenAI - API Key"]
+        P3["OpenAI - Bearer Token"]
+        P4["Anthropic - API Key"]
+        P5["Vertex AI - OAuth2"]
+        P6["IBM watsonx.ai - Bearer Token"]
+        P7["Oracle Cloud AI - Bearer Token"]
     end
 
-    TransparentMetrics --> P1 & P2 & P3 & P4 & P5 & P6 & P7
-    ProtocolMetrics --> P1 & P2 & P3 & P4 & P5 & P6 & P7
+    TransparentMetrics --> P1
+    TransparentMetrics --> P2
+    TransparentMetrics --> P3
+    TransparentMetrics --> P4
+    TransparentMetrics --> P5
+    TransparentMetrics --> P6
+    TransparentMetrics --> P7
+
+    ProtocolMetrics --> P1
+    ProtocolMetrics --> P2
+    ProtocolMetrics --> P3
+    ProtocolMetrics --> P4
+    ProtocolMetrics --> P5
+    ProtocolMetrics --> P6
+    ProtocolMetrics --> P7
 
     style Transparent fill:#fff4e1
     style Protocol fill:#ffe1f5
     style Providers fill:#e8f5e9
-    style TransparentNote fill:#fff9e6
-    style ProtocolNote fill:#ffe6f0
 ```
+
+**Transparent Mode**: No transformation, just authentication and metrics
+**Protocol Mode**: With transformation - OpenAI to/from Provider Format
 
 ---
 
