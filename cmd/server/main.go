@@ -11,6 +11,7 @@ import (
 
 	"github.com/bedrock-proxy/bedrock-iam-proxy/internal/handlers"
 	"github.com/bedrock-proxy/bedrock-iam-proxy/internal/health"
+	"github.com/bedrock-proxy/bedrock-iam-proxy/internal/instance"
 	"github.com/bedrock-proxy/bedrock-iam-proxy/internal/middleware"
 	"github.com/bedrock-proxy/bedrock-iam-proxy/internal/providers"
 	"github.com/bedrock-proxy/bedrock-iam-proxy/internal/providers/anthropic"
@@ -37,6 +38,7 @@ func main() {
 	tlsKeyFile := getEnv("TLS_KEY_FILE", "/etc/tls/tls.key")
 	tlsEnabled := getEnv("TLS_ENABLED", "false") == "true"
 	modelMappingConfig := getEnv("MODEL_MAPPING_CONFIG", "configs/model-mapping.yaml")
+	providerInstancesConfig := getEnv("PROVIDER_INSTANCES_CONFIG", "configs/provider-instances.yaml")
 
 	// Set Gin mode
 	gin.SetMode(ginMode)
@@ -181,8 +183,32 @@ func main() {
 	enabledProviders := routerConfig.ListEnabledProviders()
 	log.Printf("Enabled providers: %s", strings.Join(enabledProviders, ", "))
 
+	// Load provider instances configuration for transparent and protocol modes
+	log.Printf("Loading provider instances configuration from: %s", providerInstancesConfig)
+	instanceConfig, err := instance.LoadConfig(providerInstancesConfig)
+	if err != nil {
+		log.Printf("Warning: Failed to load provider instances config: %v", err)
+		log.Println("Continuing without transparent/protocol mode support")
+		instanceConfig = nil
+	} else {
+		log.Println("✓ Provider instances configuration loaded")
+		transparentInstances := instanceConfig.ListInstancesByMode("transparent")
+		protocolInstances := instanceConfig.ListInstancesByMode("protocol")
+		log.Printf("  - Transparent mode instances: %d", len(transparentInstances))
+		log.Printf("  - Protocol mode instances: %d", len(protocolInstances))
+	}
+
 	// Initialize handlers
 	openaiHandler := handlers.NewOpenAIHandler(aiRouter)
+
+	// Initialize transparent and protocol handlers if config is available
+	var transparentHandler *handlers.TransparentHandler
+	var protocolHandler *handlers.ProtocolHandler
+	if instanceConfig != nil {
+		transparentHandler = handlers.NewTransparentHandler(providerRegistry, instanceConfig)
+		protocolHandler = handlers.NewProtocolHandler(providerRegistry, instanceConfig)
+		log.Println("✓ Transparent and protocol handlers initialized")
+	}
 
 	// Initialize Gin router
 	ginRouter := gin.New()
@@ -209,6 +235,34 @@ func main() {
 		openaiGroup.POST("/chat/completions", openaiHandler.ChatCompletions)
 		openaiGroup.GET("/models", openaiHandler.ListModels)
 		openaiGroup.GET("/models/:model", openaiHandler.GetModel)
+	}
+
+	// Transparent mode endpoints (/transparent/{provider}/*)
+	if transparentHandler != nil && instanceConfig != nil && instanceConfig.IsFeatureEnabled("transparent_mode") {
+		transparentGroup := ginRouter.Group("/transparent")
+		if authEnabled {
+			log.Printf("Authentication enabled for transparent mode: mode=%s", authMode)
+			transparentGroup.Use(getAuthMiddleware(authMode))
+		}
+		{
+			transparentGroup.Any("/*path", transparentHandler.HandleRequest)
+		}
+		log.Println("✓ Transparent mode endpoints registered: /transparent/*")
+	}
+
+	// Protocol mode endpoints (/{protocol}/{instance_name}/*)
+	if protocolHandler != nil && instanceConfig != nil && instanceConfig.IsFeatureEnabled("protocol_mode") {
+		protocolGroup := ginRouter.Group("/")
+		if authEnabled {
+			log.Printf("Authentication enabled for protocol mode: mode=%s", authMode)
+			protocolGroup.Use(getAuthMiddleware(authMode))
+		}
+		{
+			// Register protocol endpoints (e.g., /openai/bedrock_us1_openai/*)
+			protocolGroup.POST("/openai/*path", protocolHandler.HandleRequest)
+			protocolGroup.POST("/anthropic/*path", protocolHandler.HandleRequest)
+		}
+		log.Println("✓ Protocol mode endpoints registered: /{protocol}/*")
 	}
 
 	// Native provider API endpoints
@@ -256,7 +310,7 @@ func main() {
 	}
 
 	// Print startup banner
-	printStartupBanner(port, tlsPort, tlsEnabled, authEnabled, enabledProviders)
+	printStartupBanner(port, tlsPort, tlsEnabled, authEnabled, enabledProviders, instanceConfig)
 
 	// Start server(s)
 	if tlsEnabled {
@@ -444,7 +498,7 @@ func getEnv(key, defaultValue string) string {
 	return defaultValue
 }
 
-func printStartupBanner(port, tlsPort string, tlsEnabled, authEnabled bool, enabledProviders []string) {
+func printStartupBanner(port, tlsPort string, tlsEnabled, authEnabled bool, enabledProviders []string, instanceConfig *instance.Config) {
 	banner := `
 ╔══════════════════════════════════════════════════════════════╗
 ║                                                              ║
@@ -461,10 +515,30 @@ Configuration:
 	}
 	fmt.Printf("  • Authentication:    %v\n", authEnabled)
 	fmt.Printf("  • Enabled Providers: %s\n", strings.Join(enabledProviders, ", "))
+
+	// Show instance configuration if available
+	if instanceConfig != nil {
+		transparentInstances := instanceConfig.ListInstancesByMode("transparent")
+		protocolInstances := instanceConfig.ListInstancesByMode("protocol")
+		fmt.Printf("  • Transparent Mode:  %d instances\n", len(transparentInstances))
+		fmt.Printf("  • Protocol Mode:     %d instances\n", len(protocolInstances))
+	}
+
 	fmt.Println()
 	fmt.Println("API Endpoints:")
 	fmt.Printf("  • OpenAI-compatible: http://localhost:%s/v1/chat/completions\n", port)
 	fmt.Printf("  • List models:       http://localhost:%s/v1/models\n", port)
+
+	// Show transparent mode endpoints
+	if instanceConfig != nil && instanceConfig.IsFeatureEnabled("transparent_mode") {
+		fmt.Printf("  • Transparent mode:  http://localhost:%s/transparent/{provider}/...\n", port)
+	}
+
+	// Show protocol mode endpoints
+	if instanceConfig != nil && instanceConfig.IsFeatureEnabled("protocol_mode") {
+		fmt.Printf("  • Protocol mode:     http://localhost:%s/{protocol}/{instance}/...\n", port)
+	}
+
 	fmt.Printf("  • Native Bedrock:    http://localhost:%s/providers/bedrock/...\n", port)
 	fmt.Printf("  • Health check:      http://localhost:%s/health\n", port)
 	fmt.Printf("  • Metrics:           http://localhost:%s/metrics\n", port)

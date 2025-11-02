@@ -1,0 +1,563 @@
+# Provider Instances Configuration
+# Defines provider instances with authentication, regions, and transformation modes
+#
+# Modes:
+#   - transparent: Passthrough with authentication only (no transformation)
+#   - protocol: Protocol-specific with request/response transformation
+#
+# URL Pattern:
+#   - Transparent: /transparent/{provider}
+#   - Protocol: /{protocol}/{instance_name}
+#
+# Examples:
+#   /transparent/bedrock              → Bedrock native API (with auth)
+#   /openai/bedrock_us1_openai        → Bedrock via OpenAI protocol (us-east-1)
+#   /openai/bedrock_eu1_openai        → Bedrock via OpenAI protocol (eu-west-1)
+#   /openai/anthropic                 → Anthropic via OpenAI protocol
+
+# Global settings
+global:
+  metrics:
+    enabled: true
+    capture_request_body: false
+    capture_response_body: false
+
+  default_timeout: 120s
+
+  # Default authentication fallback
+  authentication:
+    allow_env_vars: true
+
+# Provider instances
+instances:
+  # ========================================
+  # AWS Bedrock Instances
+  # ========================================
+
+  # Transparent passthrough - original Bedrock API
+  bedrock_transparent:
+    type: bedrock
+    mode: transparent
+    description: "AWS Bedrock native API with authentication only"
+
+    # Region configuration
+    region: us-east-1
+
+    # Authentication
+    authentication:
+      type: aws_sigv4
+      service: bedrock-runtime
+      region: ${AWS_REGION:-us-east-1}
+      # Credentials from environment or IAM role
+
+    # Endpoints
+    endpoints:
+      - path: /transparent/bedrock
+        methods: [GET, POST, PUT, DELETE]
+      - path: /transparent/bedrock-runtime
+        methods: [GET, POST]
+      # Backward compatibility
+      - path: /bedrock
+        methods: [GET, POST, PUT, DELETE]
+      - path: /model
+        methods: [POST]
+
+    # Metrics
+    metrics:
+      enabled: true
+      labels:
+        provider: bedrock
+        mode: transparent
+        region: us-east-1
+
+  # OpenAI-compatible Bedrock (US East 1)
+  bedrock_us1_openai:
+    type: bedrock
+    mode: protocol
+    protocol: openai
+    description: "AWS Bedrock via OpenAI-compatible API (us-east-1)"
+
+    region: us-east-1
+
+    authentication:
+      type: aws_sigv4
+      service: bedrock-runtime
+      region: us-east-1
+
+    transformation:
+      request_from: openai
+      request_to: bedrock_converse
+      response_from: bedrock_converse
+      response_to: openai
+
+      # Transformation options
+      options:
+        default_max_tokens: 4096
+        preserve_original_model_id: false
+
+    endpoints:
+      - path: /openai/bedrock_us1
+        methods: [POST]
+      - path: /openai/bedrock_us1_openai
+        methods: [POST]
+      - path: /openai/bedrock
+        methods: [POST]
+
+    metrics:
+      enabled: true
+      labels:
+        provider: bedrock
+        mode: protocol
+        protocol: openai
+        region: us-east-1
+
+  # OpenAI-compatible Bedrock (EU West 1)
+  bedrock_eu1_openai:
+    type: bedrock
+    mode: protocol
+    protocol: openai
+    description: "AWS Bedrock via OpenAI-compatible API (eu-west-1)"
+
+    region: eu-west-1
+
+    authentication:
+      type: aws_sigv4
+      service: bedrock-runtime
+      region: eu-west-1
+
+    transformation:
+      request_from: openai
+      request_to: bedrock_converse
+      response_from: bedrock_converse
+      response_to: openai
+
+    endpoints:
+      - path: /openai/bedrock_eu1
+        methods: [POST]
+      - path: /openai/bedrock_eu1_openai
+        methods: [POST]
+
+    metrics:
+      enabled: true
+      labels:
+        provider: bedrock
+        mode: protocol
+        protocol: openai
+        region: eu-west-1
+
+  # ========================================
+  # Azure OpenAI Instances
+  # ========================================
+
+  # Transparent Azure OpenAI
+  azure_transparent:
+    type: azure
+    mode: transparent
+    description: "Azure OpenAI native API with authentication"
+
+    endpoint: ${AZURE_OPENAI_ENDPOINT}
+    api_version: ${AZURE_API_VERSION:-2024-02-15-preview}
+
+    authentication:
+      type: api_key
+      header: api-key
+      key: ${AZURE_OPENAI_API_KEY}
+
+    endpoints:
+      - path: /transparent/azure
+        methods: [GET, POST]
+      - path: /transparent/azure-openai
+        methods: [GET, POST]
+
+    metrics:
+      enabled: true
+      labels:
+        provider: azure
+        mode: transparent
+
+  # OpenAI-compatible Azure (already speaks OpenAI, just passthrough)
+  azure_openai:
+    type: azure
+    mode: protocol
+    protocol: openai
+    description: "Azure OpenAI via standardized OpenAI protocol"
+
+    endpoint: ${AZURE_OPENAI_ENDPOINT}
+    api_version: ${AZURE_API_VERSION:-2024-02-15-preview}
+
+    authentication:
+      type: api_key
+      header: api-key
+      key: ${AZURE_OPENAI_API_KEY}
+
+    transformation:
+      request_from: openai
+      request_to: openai  # No transformation needed
+      response_from: openai
+      response_to: openai
+
+    endpoints:
+      - path: /openai/azure
+        methods: [POST]
+
+    metrics:
+      enabled: true
+      labels:
+        provider: azure
+        mode: protocol
+        protocol: openai
+
+  # ========================================
+  # OpenAI Direct Instances
+  # ========================================
+
+  # Transparent OpenAI
+  openai_transparent:
+    type: openai
+    mode: transparent
+    description: "OpenAI native API with authentication"
+
+    base_url: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+
+    authentication:
+      type: bearer_token
+      token: ${OPENAI_API_KEY}
+
+    endpoints:
+      - path: /transparent/openai
+        methods: [GET, POST]
+
+    metrics:
+      enabled: true
+      labels:
+        provider: openai
+        mode: transparent
+
+  # OpenAI-compatible OpenAI (passthrough)
+  openai_openai:
+    type: openai
+    mode: protocol
+    protocol: openai
+    description: "OpenAI via standardized OpenAI protocol"
+
+    base_url: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+
+    authentication:
+      type: bearer_token
+      token: ${OPENAI_API_KEY}
+
+    transformation:
+      request_from: openai
+      request_to: openai
+      response_from: openai
+      response_to: openai
+
+    endpoints:
+      - path: /openai/openai
+        methods: [POST]
+
+    metrics:
+      enabled: true
+      labels:
+        provider: openai
+        mode: protocol
+        protocol: openai
+
+  # ========================================
+  # Anthropic Instances
+  # ========================================
+
+  # Transparent Anthropic
+  anthropic_transparent:
+    type: anthropic
+    mode: transparent
+    description: "Anthropic native Messages API with authentication"
+
+    base_url: ${ANTHROPIC_BASE_URL:-https://api.anthropic.com/v1}
+    api_version: "2023-06-01"
+
+    authentication:
+      type: api_key
+      header: x-api-key
+      key: ${ANTHROPIC_API_KEY}
+
+    endpoints:
+      - path: /transparent/anthropic
+        methods: [POST]
+
+    metrics:
+      enabled: true
+      labels:
+        provider: anthropic
+        mode: transparent
+
+  # OpenAI-compatible Anthropic
+  anthropic_openai:
+    type: anthropic
+    mode: protocol
+    protocol: openai
+    description: "Anthropic Claude via OpenAI-compatible API"
+
+    base_url: ${ANTHROPIC_BASE_URL:-https://api.anthropic.com/v1}
+    api_version: "2023-06-01"
+
+    authentication:
+      type: api_key
+      header: x-api-key
+      key: ${ANTHROPIC_API_KEY}
+
+    transformation:
+      request_from: openai
+      request_to: anthropic_messages
+      response_from: anthropic_messages
+      response_to: openai
+
+      options:
+        ensure_max_tokens: true
+        default_max_tokens: 4096
+
+    endpoints:
+      - path: /openai/anthropic
+        methods: [POST]
+      - path: /openai/claude
+        methods: [POST]
+
+    metrics:
+      enabled: true
+      labels:
+        provider: anthropic
+        mode: protocol
+        protocol: openai
+
+  # ========================================
+  # Google Vertex AI Instances
+  # ========================================
+
+  # Transparent Vertex AI
+  vertex_transparent:
+    type: vertex
+    mode: transparent
+    description: "Google Vertex AI native API with authentication"
+
+    project_id: ${GCP_PROJECT_ID}
+    location: ${GCP_LOCATION:-us-central1}
+
+    authentication:
+      type: gcp_oauth2
+      token: ${GCP_ACCESS_TOKEN}
+      # Or use Application Default Credentials
+
+    endpoints:
+      - path: /transparent/vertex
+        methods: [POST]
+      - path: /transparent/vertex-ai
+        methods: [POST]
+
+    metrics:
+      enabled: true
+      labels:
+        provider: vertex
+        mode: transparent
+
+  # OpenAI-compatible Vertex AI
+  vertex_openai:
+    type: vertex
+    mode: protocol
+    protocol: openai
+    description: "Google Vertex AI (Gemini) via OpenAI-compatible API"
+
+    project_id: ${GCP_PROJECT_ID}
+    location: ${GCP_LOCATION:-us-central1}
+
+    authentication:
+      type: gcp_oauth2
+      token: ${GCP_ACCESS_TOKEN}
+
+    transformation:
+      request_from: openai
+      request_to: vertex_gemini
+      response_from: vertex_gemini
+      response_to: openai
+
+      options:
+        role_mapping:
+          assistant: model
+          user: user
+
+    endpoints:
+      - path: /openai/vertex
+        methods: [POST]
+      - path: /openai/gemini
+        methods: [POST]
+
+    metrics:
+      enabled: true
+      labels:
+        provider: vertex
+        mode: protocol
+        protocol: openai
+
+  # ========================================
+  # IBM Watson Instances
+  # ========================================
+
+  # Transparent IBM Watson
+  ibm_transparent:
+    type: ibm
+    mode: transparent
+    description: "IBM watsonx.ai native API with authentication"
+
+    base_url: ${IBM_BASE_URL:-https://us-south.ml.cloud.ibm.com}
+    project_id: ${IBM_PROJECT_ID}
+
+    authentication:
+      type: bearer_token
+      token: ${IBM_API_KEY}
+
+    endpoints:
+      - path: /transparent/ibm
+        methods: [POST]
+      - path: /transparent/watson
+        methods: [POST]
+
+    metrics:
+      enabled: true
+      labels:
+        provider: ibm
+        mode: transparent
+
+  # OpenAI-compatible IBM Watson
+  ibm_openai:
+    type: ibm
+    mode: protocol
+    protocol: openai
+    description: "IBM watsonx.ai via OpenAI-compatible API"
+
+    base_url: ${IBM_BASE_URL:-https://us-south.ml.cloud.ibm.com}
+    project_id: ${IBM_PROJECT_ID}
+
+    authentication:
+      type: bearer_token
+      token: ${IBM_API_KEY}
+
+    transformation:
+      request_from: openai
+      request_to: ibm_generation
+      response_from: ibm_generation
+      response_to: openai
+
+    endpoints:
+      - path: /openai/ibm
+        methods: [POST]
+      - path: /openai/watson
+        methods: [POST]
+
+    metrics:
+      enabled: true
+      labels:
+        provider: ibm
+        mode: protocol
+        protocol: openai
+
+  # ========================================
+  # Oracle Cloud AI Instances
+  # ========================================
+
+  # Transparent Oracle Cloud AI
+  oracle_transparent:
+    type: oracle
+    mode: transparent
+    description: "Oracle Cloud Generative AI native API with authentication"
+
+    endpoint: ${ORACLE_ENDPOINT}
+    compartment_id: ${ORACLE_COMPARTMENT_ID}
+
+    authentication:
+      type: bearer_token
+      token: ${ORACLE_AUTH_TOKEN}
+
+    endpoints:
+      - path: /transparent/oracle
+        methods: [POST]
+      - path: /transparent/oci
+        methods: [POST]
+
+    metrics:
+      enabled: true
+      labels:
+        provider: oracle
+        mode: transparent
+
+  # OpenAI-compatible Oracle Cloud AI
+  oracle_openai:
+    type: oracle
+    mode: protocol
+    protocol: openai
+    description: "Oracle Cloud AI via OpenAI-compatible API"
+
+    endpoint: ${ORACLE_ENDPOINT}
+    compartment_id: ${ORACLE_COMPARTMENT_ID}
+
+    authentication:
+      type: bearer_token
+      token: ${ORACLE_AUTH_TOKEN}
+
+    transformation:
+      request_from: openai
+      request_to: oracle_cohere
+      response_from: oracle_cohere
+      response_to: openai
+
+    endpoints:
+      - path: /openai/oracle
+        methods: [POST]
+      - path: /openai/oci
+        methods: [POST]
+
+    metrics:
+      enabled: true
+      labels:
+        provider: oracle
+        mode: protocol
+        protocol: openai
+
+# Routing rules
+routing:
+  # Default instance for each provider (when using /v1 endpoints)
+  defaults:
+    bedrock: bedrock_us1_openai
+    azure: azure_openai
+    openai: openai_openai
+    anthropic: anthropic_openai
+    vertex: vertex_openai
+    ibm: ibm_openai
+    oracle: oracle_openai
+
+  # Path-based routing
+  path_based:
+    enabled: true
+    # Matches /transparent/{provider} or /{protocol}/{instance}
+
+  # Fallback behavior
+  fallback:
+    enabled: true
+    # If instance not found, try default for that provider type
+    use_default: true
+
+# Feature flags
+features:
+  transparent_mode:
+    enabled: true
+    description: "Enable transparent passthrough endpoints"
+
+  protocol_mode:
+    enabled: true
+    description: "Enable protocol-based transformation endpoints"
+
+  metrics_per_instance:
+    enabled: true
+    description: "Track metrics separately for each instance"
+
+  request_validation:
+    enabled: true
+    description: "Validate requests before forwarding"
