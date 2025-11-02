@@ -41,11 +41,12 @@ flowchart TB
     end
 
     subgraph Gateway["LLM Proxy Auth Gateway - Kubernetes Pod"]
-        AUTH[User Authentication Layer<br/>API Key / 2FA / OAuth2]
+        AUTH[User Authentication Router<br/>API Key / 2FA / OAuth2]
 
-        subgraph Routing["Request Routing"]
-            TRANSPARENT[Transparent Mode<br/>/transparent/*]
-            PROTOCOL[Protocol Mode<br/>/protocol/*]
+        subgraph Routers["Core Routing Layer"]
+            MODE_ROUTER[Mode Router<br/>Transparent vs Protocol]
+            MODEL_ROUTER[Model Router<br/>Model name → Provider mapping]
+            PROVIDER_ROUTER[Provider Router<br/>Route to handler]
         end
 
         subgraph Handlers["Provider Handlers"]
@@ -58,27 +59,28 @@ flowchart TB
             P7[Oracle Handler]
         end
 
-        CRED_MGR[Credential Manager<br/>Strategy-based selection]
+        CRED_ROUTER[Credential Router<br/>Strategy-based selection]
+        VAULT_ROUTER[Vault Router<br/>Select vault backend]
     end
 
     subgraph CredSources["Credential Sources - Auto-Selected by Platform"]
         DETECTOR[Platform Detector<br/>EKS/AKS/GKE/OKE/Generic]
 
-        subgraph WorkloadID["Workload Identity - Best Option"]
+        subgraph WorkloadID["Workload Identity"]
             WI1[AWS IRSA]
             WI2[Azure Managed Identity]
             WI3[GCP Workload Identity]
             WI4[OCI Resource Principal]
         end
 
-        subgraph Vaults["Vault Backends - Fallback Option"]
+        subgraph Vaults["Vault Backends"]
             V1[HashiCorp Vault]
             V2[AWS Secrets Manager]
             V3[Azure Key Vault]
             V4[GCP Secret Manager]
         end
 
-        K8S_SEC[Kubernetes Secrets<br/>Last Resort]
+        K8S_SEC[Kubernetes Secrets]
     end
 
     subgraph AIProviders["AI Providers"]
@@ -91,58 +93,83 @@ flowchart TB
         ORACLE[Oracle Cloud AI]
     end
 
-    C1 --> AUTH
-    C2 --> AUTH
-    C3 --> AUTH
+    C1 & C2 & C3 --> AUTH
+    AUTH --> MODE_ROUTER
 
-    AUTH --> TRANSPARENT
-    AUTH --> PROTOCOL
+    MODE_ROUTER -->|Transparent or Protocol| MODEL_ROUTER
+    MODEL_ROUTER -->|claude-3 → Bedrock<br/>gpt-4 → OpenAI<br/>gemini → Vertex| PROVIDER_ROUTER
 
-    TRANSPARENT --> P1 & P2 & P3 & P4 & P5 & P6 & P7
-    PROTOCOL --> P1 & P2 & P3 & P4 & P5 & P6 & P7
+    PROVIDER_ROUTER --> P1 & P2 & P3 & P4 & P5 & P6 & P7
 
-    P1 --> CRED_MGR
-    P2 --> CRED_MGR
-    P3 --> CRED_MGR
-    P4 --> CRED_MGR
-    P5 --> CRED_MGR
-    P6 --> CRED_MGR
-    P7 --> CRED_MGR
+    P1 & P2 & P3 & P4 & P5 & P6 & P7 --> CRED_ROUTER
 
-    CRED_MGR --> DETECTOR
-    DETECTOR --> WorkloadID
-    DETECTOR --> Vaults
-    DETECTOR --> K8S_SEC
+    CRED_ROUTER --> DETECTOR
+    DETECTOR -->|Check platform| CRED_ROUTER
 
-    WI1 --> BEDROCK
-    WI2 --> AZURE
-    WI3 --> VERTEX
-    WI4 --> ORACLE
+    CRED_ROUTER -->|Strategy 1| WorkloadID
+    CRED_ROUTER -->|Strategy 2| VAULT_ROUTER
+    CRED_ROUTER -->|Strategy 3| K8S_SEC
 
-    V1 --> BEDROCK & OPENAI & ANTHROPIC & AZURE & VERTEX & IBM_P & ORACLE
-    V2 --> BEDROCK & OPENAI & ANTHROPIC
-    V3 --> AZURE & OPENAI & ANTHROPIC
-    V4 --> VERTEX & OPENAI & ANTHROPIC
+    VAULT_ROUTER --> V1 & V2 & V3 & V4
 
-    K8S_SEC --> BEDROCK & OPENAI & ANTHROPIC & AZURE & VERTEX & IBM_P & ORACLE
+    WI1 & V1 & V2 & K8S_SEC --> BEDROCK
+    V1 & V2 & V3 & V4 & K8S_SEC --> OPENAI & ANTHROPIC
+    WI2 & V1 & V3 & K8S_SEC --> AZURE
+    WI3 & V1 & V4 & K8S_SEC --> VERTEX
+    V1 & V2 & K8S_SEC --> IBM_P
+    WI4 & V1 & K8S_SEC --> ORACLE
 
     style AUTH fill:#e1f5ff
-    style Routing fill:#fff4e1
-    style CRED_MGR fill:#ffe1f5
-    style DETECTOR fill:#f3e5f5
+    style Routers fill:#fff4e1
+    style MODE_ROUTER fill:#ffe6f0
+    style MODEL_ROUTER fill:#ffe6f0
+    style PROVIDER_ROUTER fill:#ffe6f0
+    style CRED_ROUTER fill:#f3e5f5
+    style VAULT_ROUTER fill:#f3e5f5
+    style DETECTOR fill:#fff3e0
     style WorkloadID fill:#e8f5e9
-    style Vaults fill:#fff3e0
+    style Vaults fill:#fff9e6
     style K8S_SEC fill:#ffebee
 ```
 
-**How the Credential Router Works:**
+**The Four-Router Architecture:**
 
-1. **All handlers route through Credential Manager** - No direct connections to credential sources
-2. **Platform Detector identifies capabilities** - What workload identity/vaults are available
-3. **Credential Manager selects best strategy** - Based on configuration priority and platform capabilities
-4. **Single decision point** - Simplifies logic and improves observability
+The gateway uses a **layered routing approach** with specialized routers:
 
-This design reduces complexity from **O(handlers × credentials)** to **O(handlers + credentials)**.
+| Router | Purpose | Decision Made |
+|--------|---------|---------------|
+| **1. Auth Router** | User authentication | Valid API key/2FA? Which user? |
+| **2. Mode Router** | Route selection | Transparent mode or Protocol mode? |
+| **3. Model Router** | Provider selection | `claude-3` → Bedrock, `gpt-4` → OpenAI, `gemini` → Vertex |
+| **4. Provider Router** | Handler dispatch | Route to Bedrock/OpenAI/Anthropic/etc handler |
+| **5. Credential Router** | Credential strategy | IRSA? Vault? K8s Secret? |
+| **6. Vault Router** | Vault backend selection | HashiCorp? AWS SM? Azure KV? GCP SM? |
+
+**Request Flow:**
+```
+Client Request
+    ↓
+[1] Auth Router: Validate user credentials
+    ↓
+[2] Mode Router: Transparent or Protocol mode?
+    ↓
+[3] Model Router: Which provider for this model?
+    ↓
+[4] Provider Router: Route to specific handler
+    ↓
+[5] Credential Router: Get provider credentials
+    ↓
+[6] Vault Router: (if needed) Select vault backend
+    ↓
+AI Provider
+```
+
+**Benefits:**
+- ✅ **Separation of concerns** - Each router has one job
+- ✅ **Easy to test** - Mock individual routers
+- ✅ **Observable** - Log decisions at each routing point
+- ✅ **Extensible** - Add new providers/vaults/modes without touching other routers
+- ✅ **Clean architecture** - Reduces complexity from O(n×m) to O(n+m)
 
 ### Credential Acquisition Flow
 
