@@ -43,34 +43,42 @@ flowchart TB
     subgraph Gateway["LLM Proxy Auth Gateway - Kubernetes Pod"]
         AUTH[User Authentication Layer<br/>API Key / 2FA / OAuth2]
 
-        TRANSPARENT[Transparent Mode<br/>/transparent/*]
-        PROTOCOL[Protocol Mode<br/>/protocol/*]
-
-        P1[Bedrock Handler]
-        P2[OpenAI Handler]
-        P3[Anthropic Handler]
-        P4[Azure Handler]
-        P5[Vertex Handler]
-        P6[IBM Handler]
-        P7[Oracle Handler]
-    end
-
-    subgraph CredSources["Credential Sources - Platform Dependent"]
-        subgraph WorkloadID["Workload Identity"]
-            WI1[AWS IRSA on EKS]
-            WI2[Azure Managed Identity on AKS]
-            WI3[GCP Workload Identity on GKE]
-            WI4[OCI Resource Principal on OKE]
+        subgraph Routing["Request Routing"]
+            TRANSPARENT[Transparent Mode<br/>/transparent/*]
+            PROTOCOL[Protocol Mode<br/>/protocol/*]
         end
 
-        subgraph Vaults["Vault Backends"]
+        subgraph Handlers["Provider Handlers"]
+            P1[Bedrock Handler]
+            P2[OpenAI Handler]
+            P3[Anthropic Handler]
+            P4[Azure Handler]
+            P5[Vertex Handler]
+            P6[IBM Handler]
+            P7[Oracle Handler]
+        end
+
+        CRED_MGR[Credential Manager<br/>Strategy-based selection]
+    end
+
+    subgraph CredSources["Credential Sources - Auto-Selected by Platform"]
+        DETECTOR[Platform Detector<br/>EKS/AKS/GKE/OKE/Generic]
+
+        subgraph WorkloadID["Workload Identity - Best Option"]
+            WI1[AWS IRSA]
+            WI2[Azure Managed Identity]
+            WI3[GCP Workload Identity]
+            WI4[OCI Resource Principal]
+        end
+
+        subgraph Vaults["Vault Backends - Fallback Option"]
             V1[HashiCorp Vault]
             V2[AWS Secrets Manager]
             V3[Azure Key Vault]
             V4[GCP Secret Manager]
         end
 
-        K8S_SEC[Kubernetes Secrets<br/>Fallback]
+        K8S_SEC[Kubernetes Secrets<br/>Last Resort]
     end
 
     subgraph AIProviders["AI Providers"]
@@ -90,83 +98,51 @@ flowchart TB
     AUTH --> TRANSPARENT
     AUTH --> PROTOCOL
 
-    TRANSPARENT --> P1
-    TRANSPARENT --> P2
-    TRANSPARENT --> P3
-    TRANSPARENT --> P4
-    TRANSPARENT --> P5
-    TRANSPARENT --> P6
-    TRANSPARENT --> P7
+    TRANSPARENT --> P1 & P2 & P3 & P4 & P5 & P6 & P7
+    PROTOCOL --> P1 & P2 & P3 & P4 & P5 & P6 & P7
 
-    PROTOCOL --> P1
-    PROTOCOL --> P2
-    PROTOCOL --> P3
-    PROTOCOL --> P4
-    PROTOCOL --> P5
-    PROTOCOL --> P6
-    PROTOCOL --> P7
+    P1 --> CRED_MGR
+    P2 --> CRED_MGR
+    P3 --> CRED_MGR
+    P4 --> CRED_MGR
+    P5 --> CRED_MGR
+    P6 --> CRED_MGR
+    P7 --> CRED_MGR
 
-    P1 --> WI1
-    P1 --> V1
-    P1 --> V2
-    P2 --> V1
-    P2 --> V2
-    P2 --> V3
-    P2 --> V4
-    P3 --> V1
-    P3 --> V2
-    P3 --> V3
-    P4 --> WI2
-    P4 --> V1
-    P4 --> V3
-    P5 --> WI3
-    P5 --> V1
-    P5 --> V4
-    P6 --> V1
-    P6 --> V2
-    P7 --> WI4
-    P7 --> V1
+    CRED_MGR --> DETECTOR
+    DETECTOR --> WorkloadID
+    DETECTOR --> Vaults
+    DETECTOR --> K8S_SEC
 
     WI1 --> BEDROCK
     WI2 --> AZURE
     WI3 --> VERTEX
     WI4 --> ORACLE
 
-    V1 --> BEDROCK
-    V1 --> OPENAI
-    V1 --> ANTHROPIC
-    V1 --> AZURE
-    V1 --> VERTEX
-    V1 --> IBM_P
-    V1 --> ORACLE
+    V1 --> BEDROCK & OPENAI & ANTHROPIC & AZURE & VERTEX & IBM_P & ORACLE
+    V2 --> BEDROCK & OPENAI & ANTHROPIC
+    V3 --> AZURE & OPENAI & ANTHROPIC
+    V4 --> VERTEX & OPENAI & ANTHROPIC
 
-    V2 --> BEDROCK
-    V2 --> OPENAI
-    V2 --> ANTHROPIC
-
-    V3 --> AZURE
-    V3 --> OPENAI
-    V3 --> ANTHROPIC
-
-    V4 --> VERTEX
-    V4 --> OPENAI
-    V4 --> ANTHROPIC
-
-    K8S_SEC --> BEDROCK
-    K8S_SEC --> OPENAI
-    K8S_SEC --> ANTHROPIC
-    K8S_SEC --> AZURE
-    K8S_SEC --> VERTEX
-    K8S_SEC --> IBM_P
-    K8S_SEC --> ORACLE
+    K8S_SEC --> BEDROCK & OPENAI & ANTHROPIC & AZURE & VERTEX & IBM_P & ORACLE
 
     style AUTH fill:#e1f5ff
-    style TRANSPARENT fill:#fff4e1
-    style PROTOCOL fill:#ffe1f5
+    style Routing fill:#fff4e1
+    style CRED_MGR fill:#ffe1f5
+    style DETECTOR fill:#f3e5f5
     style WorkloadID fill:#e8f5e9
     style Vaults fill:#fff3e0
     style K8S_SEC fill:#ffebee
 ```
+
+**How the Credential Router Works:**
+
+1. **All handlers route through Credential Manager** - No direct connections to credential sources
+2. **Platform Detector identifies capabilities** - What workload identity/vaults are available
+3. **Credential Manager selects best strategy** - Based on configuration priority and platform capabilities
+4. **Single decision point** - Simplifies logic and improves observability
+
+This design reduces complexity from **O(handlers × credentials)** to **O(handlers + credentials)**.
 
 ### Credential Acquisition Flow
 
