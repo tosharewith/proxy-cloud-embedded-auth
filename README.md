@@ -628,6 +628,13 @@ https://bedrock-proxy.example.com
 - **[🚀 Security Quick Start](docs/SECURITY-QUICKSTART.md)** - 5-minute setup guide
 - **[📚 Complete Authorization Guide](docs/AUTHORIZATION.md)** - All auth methods
 - **[☁️ AWS EKS Integration](deployments/kubernetes/aws-native-auth.yaml)** - Native AWS auth
+- **[🧪 Testing Guide](docs/TESTING.md)** - Comprehensive testing documentation
+- **[🏗️ Architecture](docs/ARCHITECTURE.md)** - Two-layer authentication architecture
+- **[🌍 Multi-Provider Architecture](docs/MULTI-PROVIDER-ARCHITECTURE.md)** - Three-layer architecture
+- **[🔀 Transparent and Protocol Modes](docs/TRANSPARENT-AND-PROTOCOL-MODES.md)** - Dual-mode explanation
+- **[🔑 Workload Identity](docs/WORKLOAD-IDENTITY.md)** - Platform-specific credential solutions
+- **[☁️ Cloud-Agnostic Config](docs/CLOUD-AGNOSTIC-CONFIG.md)** - Universal configuration
+- **[💾 Storage Routing](docs/STORAGE-ROUTING.md)** - Cloud object storage and pre-signed URLs
 
 ### Security Scanning
 
@@ -678,15 +685,53 @@ go test ./... -v
 
 ### Testing
 
+**Comprehensive Testing Guide**: See [docs/TESTING.md](docs/TESTING.md) for complete testing documentation including:
+- Unit testing for routers, credential strategies, pre-signed URL generation
+- Integration testing with LocalStack, Azurite, HashiCorp Vault
+- Platform-specific testing for EKS, AKS, GKE
+- Storage operations testing (S3, Azure Blob, GCP Storage)
+- End-to-end testing and RAG integration tests
+- Performance and load testing
+
+**Quick Test Commands:**
+
 ```bash
-# Unit tests
+# Run all unit tests
 go test ./...
 
-# Integration tests (requires AWS credentials)
-go test ./... -tags=integration
+# Run with coverage report
+go test -cover ./...
+go test -coverprofile=coverage.out ./...
+go tool cover -html=coverage.out
 
-# Benchmark tests
+# Run unit tests only (skip integration)
+go test -short ./...
+
+# Run integration tests (requires test services)
+docker-compose -f docker-compose.test.yml up -d
+go test ./test/integration/...
+
+# Run E2E tests (requires running gateway)
+go test ./test/e2e/...
+
+# Run benchmarks
 go test -bench=. ./...
+
+# Run with race detector
+go test -race ./...
+```
+
+**Test Environment Setup:**
+
+```bash
+# Start local test services (Vault, LocalStack, Azurite, MinIO)
+docker-compose -f docker-compose.test.yml up -d
+
+# Run all tests
+go test ./...
+
+# Cleanup
+docker-compose -f docker-compose.test.yml down -v
 ```
 
 ## Monitoring

@@ -1,0 +1,135 @@
+version: '3.8'
+
+# Docker Compose configuration for local testing
+# Provides mock services for integration testing
+#
+# Usage:
+#   docker-compose -f docker-compose.test.yml up -d
+#   go test ./test/integration/...
+#   docker-compose -f docker-compose.test.yml down -v
+
+services:
+  # HashiCorp Vault for testing credential management
+  vault:
+    image: vault:latest
+    container_name: llmproxy-test-vault
+    ports:
+      - "8200:8200"
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: test-token
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+    cap_add:
+      - IPC_LOCK
+    networks:
+      - llmproxy-test
+    healthcheck:
+      test: ["CMD", "vault", "status"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # LocalStack for AWS service mocking (S3, Secrets Manager, STS)
+  localstack:
+    image: localstack/localstack:latest
+    container_name: llmproxy-test-localstack
+    ports:
+      - "4566:4566"    # LocalStack gateway
+      - "4510-4559:4510-4559"  # External services
+    environment:
+      SERVICES: s3,secretsmanager,sts
+      DEBUG: 1
+      DATA_DIR: /tmp/localstack/data
+      DOCKER_HOST: unix:///var/run/docker.sock
+    volumes:
+      - ./test/localstack:/tmp/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - llmproxy-test
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Azurite for Azure Blob Storage mocking
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite
+    container_name: llmproxy-test-azurite
+    ports:
+      - "10000:10000"  # Blob service
+      - "10001:10001"  # Queue service
+      - "10002:10002"  # Table service
+    command: azurite-blob --blobHost 0.0.0.0
+    networks:
+      - llmproxy-test
+    volumes:
+      - azurite-data:/data
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "10000"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # MinIO for S3-compatible storage testing
+  minio:
+    image: minio/minio:latest
+    container_name: llmproxy-test-minio
+    ports:
+      - "9000:9000"    # S3 API
+      - "9001:9001"    # Console
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio-data:/data
+    networks:
+      - llmproxy-test
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # PostgreSQL for testing database operations
+  postgres:
+    image: postgres:15
+    container_name: llmproxy-test-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: llmproxy_test
+      POSTGRES_USER: postgres
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - llmproxy-test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Redis for testing caching/session management
+  redis:
+    image: redis:7-alpine
+    container_name: llmproxy-test-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - llmproxy-test
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+networks:
+  llmproxy-test:
+    driver: bridge
+
+volumes:
+  azurite-data:
+  minio-data:
+  postgres-data:
